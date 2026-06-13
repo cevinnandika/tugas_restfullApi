@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistem Manajemen Mahasiswa (JWT Auth)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        th { text-transform: uppercase; font-size: 0.85rem; letter-spacing: 0.5px; }
+        .form-label { font-weight: 600; color: #495057; }
+    </style>
+</head>
+<body class="bg-light">
+
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-12 text-center mb-4">
+                <h2 class="fw-bold text-primary">Sistem Informasi Mahasiswa Terproteksi JWT</h2>
+                <p class="text-muted">Integrasi Validasi Otentikasi FastAPI & Cloud Supabase Database</p>
+            </div>
+        </div>
+
+        <div class="row justify-content-center" id="loginSection">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header bg-dark text-white fw-bold text-center">LOGIN SISTEM</div>
+                    <div class="card-body">
+                        <form id="loginForm">
+                            <div class="mb-3">
+                                <label class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" value="admin" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" value="admin123" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">Masuk Aplikasi</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row d-none" id="mainCrudSection">
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white fw-bold" id="formTitle">
+                        Tambah Mahasiswa Baru
+                    </div>
+                    <div class="card-body">
+                        <form id="mahasiswaForm">
+                            <input type="hidden" id="mahasiswaId">
+                            <div class="mb-3">
+                                <label class="form-label">NIM Mahasiswa</label>
+                                <input type="text" class="form-control" id="nim" placeholder="Contoh: 220101001" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Nama Lengkap</label>
+                                <input type="text" class="form-control" id="nama" placeholder="Contoh: Cevin Nur Andika" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Jurusan</label>
+                                <input type="text" class="form-control" id="jurusan" placeholder="Contoh: Teknik Informatika" required>
+                            </div>
+                            <button type="submit" class="btn btn-success w-100" id="btnSubmit">Simpan Data</button>
+                            <button type="button" class="btn btn-secondary w-100 mt-2 d-none" id="btnCancel" onclick="resetForm()">Batal Edit</button>
+                        </form>
+                        <hr>
+                        <button class="btn btn-outline-danger btn-sm w-100" onclick="logout()">Logout / Keluar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header bg-dark text-white fw-bold">Daftar Mahasiswa Aktif</div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover table-striped mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-3">NIM</th>
+                                        <th>Nama</th>
+                                        <th>Jurusan</th>
+                                        <th class="text-center" style="width: 150px;">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mahasiswaTableBody">
+                                    <tr>
+                                        <td colspan="4" class="text-center text-muted py-4">Memuat data dari Supabase...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = "http://127.0.0.1:8000";
+        let TOKEN_AKSES = ""; 
+
+        // 1. PROSES POST LOGIN KE FASTAPI
+        document.getElementById("loginForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+
+            try {
+                const response = await fetch(`${BASE_URL}/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    const resData = await response.json();
+                    TOKEN_AKSES = resData.access_token; // Ambil token bearer rahasia
+                    
+                    // Alihkan panel visual halaman web
+                    document.getElementById("loginSection").classList.add("d-none");
+                    document.getElementById("mainCrudSection").classList.remove("d-none");
+                    
+                    fetchMahasiswa(); // Muat tabel data mahasiswa secara otomatis
+                } else {
+                    alert("Gagal Login: Kombinasi Username atau Password salah!");
+                }
+            } catch (error) {
+                alert("Gangguan jaringan terdeteksi saat melakukan login.");
+            }
+        });
+
+        function logout() {
+            TOKEN_AKSES = "";
+            document.getElementById("loginSection").classList.remove("d-none");
+            document.getElementById("mainCrudSection").classList.add("d-none");
+            document.getElementById("loginForm").reset();
+        }
+
+        // 2. READ (GET ALL MAHASISWA DENGAN BEARER TOKEN)
+        async function fetchMahasiswa() {
+            try {
+                const response = await fetch(`${BASE_URL}/mahasiswa`, {
+                    headers: { "Authorization": `Bearer ${TOKEN_AKSES}` }
+                });
+                const tbody = document.getElementById("mahasiswaTableBody");
+                
+                if (!response.ok) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-4">Sesi token tidak sah (Error ${response.status}). Silakan muat ulang halaman.</td></tr>`;
+                    return;
+                }
+
+                const data = await response.json();
+                tbody.innerHTML = "";
+
+                if (data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">Belum ada data mahasiswa di dalam database cloud.</td></tr>`;
+                    return;
+                }
+
+                data.forEach(mhs => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td class="ps-3 fw-semibold">${mhs.nim}</td>
+                            <td>${mhs.nama}</td>
+                            <td>${mhs.jurusan}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-warning me-1" onclick="editMahasiswa(${mhs.id}, '${mhs.nim}', '${mhs.nama}', '${mhs.jurusan}')">Edit</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteMahasiswa(${mhs.id})">Hapus</button>
+                            </td>
+                        </tr>`;
+                });
+            } catch (error) {
+                console.error("Gagal mendapatkan data:", error);
+            }
+        }
+
+        // 3. WRITE & UPDATE (POST & PUT DENGAN BEARER TOKEN)
+        document.getElementById("mahasiswaForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const id = document.getElementById("mahasiswaId").value;
+            const nim = document.getElementById("nim").value;
+            const nama = document.getElementById("nama").value;
+            const jurusan = document.getElementById("jurusan").value;
+            const payload = { nama, nim, jurusan };
+
+            try {
+                let response;
+                const requestOptions = {
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${TOKEN_AKSES}`
+                    },
+                    body: JSON.stringify(payload)
+                };
+
+                if (id) {
+                    response = await fetch(`${BASE_URL}/mahasiswa/${id}`, { method: "PUT", ...requestOptions });
+                } else {
+                    response = await fetch(`${BASE_URL}/mahasiswa`, { method: "POST", ...requestOptions });
+                }
+
+                if (response.ok) {
+                    resetForm();
+                    fetchMahasiswa();
+                    alert(id ? "Data mahasiswa sukses diubah!" : "Mahasiswa baru sukses ditambahkan!");
+                } else {
+                    const errBody = await response.json();
+                    if(JSON.stringify(errBody.detail).includes("already exists")) {
+                        alert("Gagal Menyimpan: NIM sudah terdaftar sebelumnya!");
+                    } else {
+                        alert("Gagal Menyimpan Data: Modifikasi ditolak server.");
+                    }
+                }
+            } catch (error) {
+                alert("Terjadi kesalahan koneksi jaringan.");
+            }
+        });
+
+        // Pemicu Tombol Aksi Edit
+        function editMahasiswa(id, nim, nama, jurusan) {
+            document.getElementById("mahasiswaId").value = id;
+            document.getElementById("nim").value = nim;
+            document.getElementById("nama").value = nama;
+            document.getElementById("jurusan").value = jurusan;
+
+            document.getElementById("formTitle").innerText = "Edit Data Mahasiswa";
+            document.getElementById("formTitle").className = "card-header bg-warning text-dark fw-bold";
+            document.getElementById("btnSubmit").className = "btn btn-warning w-100";
+            document.getElementById("btnCancel").classList.remove("d-none");
+        }
+
+        // 4. DELETE (MENGHAPUS DATA DENGAN BEARER TOKEN)
+        async function deleteMahasiswa(id) {
+            if (confirm("Apakah kamu yakin ingin menghapus data mahasiswa ini secara permanen?")) {
+                try {
+                    const response = await fetch(`${BASE_URL}/mahasiswa/${id}`, { 
+                        method: "DELETE",
+                        headers: { "Authorization": `Bearer ${TOKEN_AKSES}` }
+                    });
+                    if (response.ok) {
+                        fetchMahasiswa();
+                        alert("Data mahasiswa berhasil dihapus.");
+                    } else {
+                        alert("Aksi hapus data gagal diproses.");
+                    }
+                } catch (error) {
+                    alert("Terjadi kesalahan jaringan.");
+                }
+            }
+        }
+
+        // Penyetelan Ulang Form
+        function resetForm() {
+            document.getElementById("mahasiswaForm").reset();
+            document.getElementById("mahasiswaId").value = "";
+            document.getElementById("formTitle").innerText = "Tambah Mahasiswa Baru";
+            document.getElementById("formTitle").className = "card-header bg-primary text-white fw-bold";
+            document.getElementById("btnSubmit").className = "btn btn-success w-100";
+            document.getElementById("btnCancel").classList.add("d-none");
+        }
+    </script>
+</body>
+</html>
